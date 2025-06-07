@@ -125,9 +125,10 @@ module.exports = {
       previousMessages.push(buttonMessage.message_id);
     }
 
+    const loadingMsg = await chat.reply('🎲 Selecting random cosplay...');
+
     try {
       const searchTerm = args.join(' ').trim();
-      const loadingMsg = await chat.reply('🎲 Selecting random cosplay...');
 
       const data = await fetchCosplay(searchTerm);
       await bot.deleteMessage(chatId, loadingMsg.message_id).catch((error) => {
@@ -136,6 +137,9 @@ module.exports = {
 
       await sendCosplayResult(data, searchTerm, msg.message_id);
     } catch (error) {
+      await bot.deleteMessage(chatId, loadingMsg.message_id).catch((error) => {
+        console.error('Error deleting loading message:', error.message);
+      });
       console.error('Cosplay command error:', error.message);
       await chat.reply('❌ Error fetching cosplay. Try again!');
     }

@@ -11,15 +11,7 @@ module.exports.config = {
     let commandList = '';
     global.commands.forEach((command, name) => {
       if (command.name === name) {
-        let prefixText = '';
-        if (command.prefix === true) {
-          prefixText = config.prefix || ''; 
-        } else if (command.prefix === false) {
-          prefixText = '';
-        } else {
-          prefixText = ``;
-        }
-        commandList += `${prefixText}${name} - ${command.description || 'No description'}\n`;
+        commandList += `${config.prefix}${name} - ${command.description || 'No description'}\n`;
       }
     });
     const response = commandList || 'No commands available.';
