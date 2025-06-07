@@ -1,5 +1,7 @@
 module.exports = {
   name: 'cosplaytele',
+  description: "Get a random cosplay",
+  vip: true,
   aliases: ['costele', 'cptele'],
   prefix: true,
   execute: async ({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback }) => {
