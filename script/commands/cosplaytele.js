@@ -49,7 +49,7 @@ module.exports = {
 
       const buttonId = `cosplay_refresh:${searchTerm || 'random'}:${Date.now()}`;
       
-      // Store the previous message IDs that need to be deleted
+
       let previousMessages = [];
       
       addAnswerCallback(buttonId, async ({ bot, chat, query, chatId }) => {
@@ -74,9 +74,9 @@ module.exports = {
 
       const inlineKeyboard = [
         [{ text: '🔁 Get Another', callback_data: buttonId }],
+        [{ text: `🌐 Web`, url: `${global.api.hajime}/cosplay` }]
       ];
       
-      inlineKeyboard.push([{ text: `🌐 Web`, url: `${global.api.hajime}/cosplay` }]);
 
       if (cosplay.downloadLinks?.length > 0) {
         cosplay.downloadLinks.forEach((link, index) => {
