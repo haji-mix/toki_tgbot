@@ -1,5 +1,7 @@
 module.exports = {
   name: 'cosplaytele',
+  description: "Random Cosplay Image",
+  category: "nsfw",
   aliases: ['costele', 'cptele'],
   prefix: true,
   execute: async ({ bot, chat, msg, args, chatId, addAnswerCallback }) => {
