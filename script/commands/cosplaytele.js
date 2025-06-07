@@ -2,7 +2,7 @@ module.exports = {
   name: 'cosplaytele',
   aliases: ['costele', 'cptele'],
   prefix: true,
-  execute: async ({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback }) => {
+  execute: async ({ bot, chat, msg, args, chatId, addAnswerCallback }) => {
   
     const shuffleArray = (array) => {
       for (let i = array.length - 1; i > 0; i--) {
@@ -46,15 +46,13 @@ module.exports = {
       }
 
       const buttonId = `cosplay_refresh:${searchTerm || 'random'}:${Date.now()}`;
-      
-      // Store the previous message IDs that need to be deleted
+
       let previousMessages = [];
       
       addAnswerCallback(buttonId, async ({ bot, chat, query, chatId }) => {
         try {
           await bot.answerCallbackQuery(query.id, { text: 'Fetching another cosplay...' });
 
-          // Delete all previous messages (both media group and button message)
           for (const msgId of previousMessages) {
             await bot.deleteMessage(chatId, msgId).catch((error) => {
               console.error('Error deleting message:', error.message);

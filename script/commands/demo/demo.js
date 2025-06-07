@@ -4,7 +4,7 @@ module.exports = {
   admin: true,  
   description: 'Tests various chat.reply features (admin only).',
   usage: '/demo <feature> (e.g., inline, reply, photo, video, document, location, animation, sticker)',
-  execute: async ({ chat, args, userId, config }) => {
+  execute: async ({ chat, args }) => {
 
     const feature = args[0]?.toLowerCase();
     const availableFeatures = [

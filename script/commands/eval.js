@@ -5,7 +5,7 @@ module.exports = {
   admin: true, 
   description: 'Executes JavaScript code (admin only).',
   usage: '/eval <JavaScript code>',
-  execute: async ({ chat, args, userId, chatId config, addListener }) => {
+  execute: async ({ chat, args, userId, chatId, config, addListener, msg }) => {
 
     if (args.length === 0) {
       return chat.reply('Please provide JavaScript code to evaluate.\nUsage: /eval <code>');
@@ -14,7 +14,6 @@ module.exports = {
     const code = args.join(' ');
 
     try {
-      // Override console.log and console.error to send output via chat.reply
       const console = {
         log: (...args) => {
           const output = args.map(item => typeof item === 'object' ? JSON.stringify(item, null, 2) : item).join(' ');
@@ -26,9 +25,11 @@ module.exports = {
         }
       };
 
-      // Create a sandboxed context with essential variables
       const context = Object.freeze({
         console,
+        chatId,
+        msg,
+        userId,
         chat,
         addListener,
         config: { prefix: config.prefix, admins: config.admins, vips: config.vips } // Expose only safe config properties
