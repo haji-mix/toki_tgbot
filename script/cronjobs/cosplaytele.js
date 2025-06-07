@@ -70,9 +70,10 @@ module.exports = {
           reply_markup: inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined,
         }, this.chatId);
       }
+
+      const loadingMsg = await chat.reply('🎲 Selecting daily random cosplay...', this.chatId);
   
       try {
-        const loadingMsg = await chat.reply('🎲 Selecting daily random cosplay...', this.chatId);
         const data = await fetchCosplay();
         await bot.deleteMessage(this.chatId, loadingMsg.message_id).catch((error) => {
           console.error('Error deleting loading message:', error.message);
@@ -80,6 +81,9 @@ module.exports = {
   
         await sendCosplayResult(data);
       } catch (error) {
+        await bot.deleteMessage(this.chatId, loadingMsg.message_id).catch((error) => {
+          console.error('Error deleting loading message:', error.message);
+        });
         console.error('Cosplay cron error:', error.message);
         await chat.reply('❌ Error fetching daily cosplay. Try again later!', this.chatId);
       }
