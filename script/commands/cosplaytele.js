@@ -1,10 +1,8 @@
 module.exports = {
   name: 'cosplaytele',
-  description: "Random Cosplay Image",
-  category: "nsfw",
   aliases: ['costele', 'cptele'],
   prefix: true,
-  execute: async ({ bot, chat, msg, args, chatId, addAnswerCallback }) => {
+  execute: async ({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback }) => {
   
     const shuffleArray = (array) => {
       for (let i = array.length - 1; i > 0; i--) {
@@ -48,13 +46,15 @@ module.exports = {
       }
 
       const buttonId = `cosplay_refresh:${searchTerm || 'random'}:${Date.now()}`;
-
+      
+      // Store the previous message IDs that need to be deleted
       let previousMessages = [];
       
       addAnswerCallback(buttonId, async ({ bot, chat, query, chatId }) => {
         try {
           await bot.answerCallbackQuery(query.id, { text: 'Fetching another cosplay...' });
 
+          // Delete all previous messages (both media group and button message)
           for (const msgId of previousMessages) {
             await bot.deleteMessage(chatId, msgId).catch((error) => {
               console.error('Error deleting message:', error.message);
@@ -73,12 +73,15 @@ module.exports = {
       const inlineKeyboard = [
         [{ text: '🔁 Get Another', callback_data: buttonId }],
       ];
+      
+      inlineKeyboard.push([{ text: `🌐 Web`, url: `${global.api.hajime}/cosplay` }]);
 
       if (cosplay.downloadLinks?.length > 0) {
         cosplay.downloadLinks.forEach((link, index) => {
           inlineKeyboard.push([{ text: `📥 Link ${index + 1}`, url: link }]);
         });
       }
+      
 
       const shuffledImages = shuffleArray([...cosplay.images]);
 
