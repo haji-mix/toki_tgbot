@@ -122,6 +122,16 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
 }
 
 /**
+ * Normalizes media content to always return an array
+ * @param {string|Array} content - The media content
+ * @returns {Array} - Always returns an array
+ */
+function normalizeMediaContent(content) {
+  if (!content) return [];
+  return Array.isArray(content) ? content : [content];
+}
+
+/**
  * Creates a chat handler with various send methods
  * @param {Object} bot - The bot instance
  * @param {Object} msg - The message object
@@ -150,8 +160,10 @@ function createChat(bot, msg) {
           ...extraOptions 
         } = input);
 
-        if (!input.type && Array.isArray(attachment)) {
-          type = 'media group';
+        if (!input.type && (attachment || content)) {
+          type = Array.isArray(attachment || content) ? 'media group' : 
+                attachment ? getMediaType(attachment) : 
+                getMediaType(content);
           parse_mode = 'Markdown';
         }
       } else {
@@ -159,7 +171,7 @@ function createChat(bot, msg) {
         return { message_id: null };
       }
 
-      const mediaContent = content || attachment;
+      const mediaContent = normalizeMediaContent(content || attachment);
       const finalOptions = { ...options, ...extraOptions, ...(parse_mode ? { parse_mode } : {}) };
 
       try {
@@ -171,8 +183,8 @@ function createChat(bot, msg) {
           case 'photo':
           case 'video':
           case 'audio':
-            if (mediaContent) {
-              if (Array.isArray(mediaContent)) {
+            if (mediaContent.length > 0) {
+              if (mediaContent.length > 1) {
                 try {
                   const media = await Promise.all(
                     mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -197,8 +209,10 @@ function createChat(bot, msg) {
                 }
               }
               
+              // Single media item
               try {
-                const mediaType = await getMediaType(mediaContent);
+                const mediaUrl = mediaContent[0];
+                const mediaType = await getMediaType(mediaUrl);
                 const sendMethod =
                   mediaType === 'photo' ? bot.sendPhoto :
                   mediaType === 'video' ? bot.sendVideo :
@@ -210,8 +224,8 @@ function createChat(bot, msg) {
                     chatId,
                     msg,
                     { caption: body, ...finalOptions },
-                    [mediaContent],
-                    { mediaUrl: mediaContent }
+                    [mediaUrl],
+                    { mediaUrl }
                   );
                 }
                 console.error(`Unsupported media type: ${mediaType}`);
@@ -224,7 +238,7 @@ function createChat(bot, msg) {
             return { message_id: null };
 
           case 'media group':
-            if (Array.isArray(mediaContent)) {
+            if (mediaContent.length > 0) {
               try {
                 const media = await Promise.all(
                   mediaContent.slice(0, 10).map(async (item, index) => {
@@ -251,54 +265,54 @@ function createChat(bot, msg) {
                 return { message_id: null };
               }
             }
-            throw new Error('Media group requires an array of media items');
+            throw new Error('Media group requires media items');
 
           case 'sticker':
-            if (mediaContent) return await sendWithFallback(
+            if (mediaContent.length > 0) return await sendWithFallback(
               bot.sendSticker.bind(bot),
               bot,
               chatId,
               msg,
               finalOptions,
-              [mediaContent],
-              { mediaUrl: mediaContent }
+              [mediaContent[0]],
+              { mediaUrl: mediaContent[0] }
             );
             return { message_id: null };
 
           case 'document':
-            if (mediaContent) return await sendWithFallback(
+            if (mediaContent.length > 0) return await sendWithFallback(
               bot.sendDocument.bind(bot),
               bot,
               chatId,
               msg,
               { caption: body, ...finalOptions },
-              [mediaContent],
-              { mediaUrl: mediaContent }
+              [mediaContent[0]],
+              { mediaUrl: mediaContent[0] }
             );
             return { message_id: null };
 
           case 'location':
-            if (mediaContent?.latitude && mediaContent?.longitude) {
+            if (mediaContent[0]?.latitude && mediaContent[0]?.longitude) {
               return await sendWithFallback(
                 bot.sendLocation.bind(bot),
                 bot,
                 chatId,
                 msg,
                 finalOptions,
-                [mediaContent.latitude, mediaContent.longitude]
+                [mediaContent[0].latitude, mediaContent[0].longitude]
               );
             }
             return { message_id: null };
 
           case 'animation':
-            if (mediaContent) return await sendWithFallback(
+            if (mediaContent.length > 0) return await sendWithFallback(
               bot.sendAnimation.bind(bot),
               bot,
               chatId,
               msg,
               { caption: body, ...finalOptions },
-              [mediaContent],
-              { mediaUrl: mediaContent }
+              [mediaContent[0]],
+              { mediaUrl: mediaContent[0] }
             );
             return { message_id: null };
 
@@ -329,13 +343,13 @@ function createChat(bot, msg) {
       } else {
         ({ photo, attachment, parse_mode = 'Markdown' } = input);
       }
-      const mediaContent = photo || attachment;
+      const mediaContent = normalizeMediaContent(photo || attachment);
 
-      if (!mediaContent) {
+      if (mediaContent.length === 0) {
         throw new Error('Photo or attachment must be provided');
       }
 
-      if (Array.isArray(mediaContent)) {
+      if (mediaContent.length > 1) {
         try {
           const media = await Promise.all(
             mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -360,8 +374,9 @@ function createChat(bot, msg) {
         }
       }
       
+      // Single photo
       try {
-        const mediaType = await getMediaType(mediaContent);
+        const mediaType = await getMediaType(mediaContent[0]);
         if (mediaType === 'photo') {
           return await sendWithFallback(
             bot.sendPhoto.bind(bot),
@@ -369,8 +384,8 @@ function createChat(bot, msg) {
             chatId,
             msg,
             { ...options, parse_mode },
-            [mediaContent],
-            { mediaUrl: mediaContent }
+            [mediaContent[0]],
+            { mediaUrl: mediaContent[0] }
           );
         }
         console.error(`Unsupported media type for photo: ${mediaType}`);
@@ -389,13 +404,13 @@ function createChat(bot, msg) {
       } else {
         ({ video, attachment, parse_mode = 'Markdown' } = input);
       }
-      const mediaContent = video || attachment;
+      const mediaContent = normalizeMediaContent(video || attachment);
 
-      if (!mediaContent) {
+      if (mediaContent.length === 0) {
         throw new Error('Video or attachment must be provided');
       }
 
-      if (Array.isArray(mediaContent)) {
+      if (mediaContent.length > 1) {
         try {
           const media = await Promise.all(
             mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -420,8 +435,9 @@ function createChat(bot, msg) {
         }
       }
       
+      // Single video
       try {
-        const mediaType = await getMediaType(mediaContent);
+        const mediaType = await getMediaType(mediaContent[0]);
         if (mediaType === 'video') {
           return await sendWithFallback(
             bot.sendVideo.bind(bot),
@@ -429,8 +445,8 @@ function createChat(bot, msg) {
             chatId,
             msg,
             { ...options, parse_mode },
-            [mediaContent],
-            { mediaUrl: mediaContent }
+            [mediaContent[0]],
+            { mediaUrl: mediaContent[0] }
           );
         }
         console.error(`Unsupported media type for video: ${mediaType}`);
@@ -449,13 +465,13 @@ function createChat(bot, msg) {
       } else {
         ({ audio, attachment, parse_mode = 'Markdown' } = input);
       }
-      const mediaContent = audio || attachment;
+      const mediaContent = normalizeMediaContent(audio || attachment);
 
-      if (!mediaContent) {
+      if (mediaContent.length === 0) {
         throw new Error('Audio or attachment must be provided');
       }
 
-      if (Array.isArray(mediaContent)) {
+      if (mediaContent.length > 1) {
         try {
           const media = await Promise.all(
             mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -480,8 +496,9 @@ function createChat(bot, msg) {
         }
       }
       
+      // Single audio
       try {
-        const mediaType = await getMediaType(mediaContent);
+        const mediaType = await getMediaType(mediaContent[0]);
         if (mediaType === 'audio') {
           return await sendWithFallback(
             bot.sendAudio.bind(bot),
@@ -489,8 +506,8 @@ function createChat(bot, msg) {
             chatId,
             msg,
             { ...options, parse_mode },
-            [mediaContent],
-            { mediaUrl: mediaContent }
+            [mediaContent[0]],
+            { mediaUrl: mediaContent[0] }
           );
         }
         console.error(`Unsupported media type for audio: ${mediaType}`);
@@ -509,13 +526,13 @@ function createChat(bot, msg) {
       } else {
         ({ document, attachment, parse_mode = 'Markdown' } = input);
       }
-      const mediaContent = document || attachment;
+      const mediaContent = normalizeMediaContent(document || attachment);
 
-      if (!mediaContent) {
+      if (mediaContent.length === 0) {
         throw new Error('Document or attachment must be provided');
       }
 
-      if (Array.isArray(mediaContent)) {
+      if (mediaContent.length > 1) {
         try {
           const media = await Promise.all(
             mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -546,8 +563,8 @@ function createChat(bot, msg) {
         chatId,
         msg,
         { ...options, parse_mode },
-        [mediaContent],
-        { mediaUrl: mediaContent }
+        [mediaContent[0]],
+        { mediaUrl: mediaContent[0] }
       );
     },
 
@@ -570,13 +587,13 @@ function createChat(bot, msg) {
       } else {
         ({ animation, attachment, parse_mode = 'Markdown' } = input);
       }
-      const mediaContent = animation || attachment;
+      const mediaContent = normalizeMediaContent(animation || attachment);
 
-      if (!mediaContent) {
+      if (mediaContent.length === 0) {
         throw new Error('Animation or attachment must be provided');
       }
 
-      if (Array.isArray(mediaContent)) {
+      if (mediaContent.length > 1) {
         try {
           const media = await Promise.all(
             mediaContent.slice(0, 10).map(async (url, index) => ({
@@ -607,8 +624,8 @@ function createChat(bot, msg) {
         chatId,
         msg,
         { ...options, parse_mode },
-        [mediaContent],
-        { mediaUrl: mediaContent }
+        [mediaContent[0]],
+        { mediaUrl: mediaContent[0] }
       );
     },
   };
