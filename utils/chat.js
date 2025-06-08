@@ -11,7 +11,7 @@ const os = require('os');
  */
 async function downloadMedia(url) {
   try {
-    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
     return Buffer.from(response.data);
   } catch (error) {
     console.error(`Error downloading media from ${url}:`, error.message);
@@ -27,7 +27,7 @@ async function downloadMedia(url) {
  */
 async function getMediaType(url) {
   try {
-    const response = await axios.head(url, { timeout: 5000 });
+    const response = await axios.head(url);
     const contentType = response.headers['content-type'];
     
     if (contentType.startsWith('image/')) return 'photo';
@@ -148,7 +148,6 @@ function createChat(bot, msg) {
           ...extraOptions 
         } = input);
 
-        // If no type is specified and attachment is provided, treat as media group
         if (!input.type && attachment) {
           type = 'media group';
         }
