@@ -42,13 +42,12 @@ async function loadFiles(dir, type, handler) {
   }
 }
 
-async function loadCommands() {
+async function loadCommands(bot) {
   global.commands.clear();
 
   const commandHandler = {
-    validator: (command) => command.name && command.execute,
+    validator: (command) => command.name && command.execute && command.description, // Ensure description exists
     process: (command, filename) => {
-      command.description = command.description || 'No description provided';
       global.commands.set(command.name, command);
       if (Array.isArray(command.aliases)) {
         command.aliases.forEach((alias) => global.commands.set(alias, command));
@@ -57,37 +56,23 @@ async function loadCommands() {
   };
 
   await loadFiles(path.join(__dirname, '../script/commands'), 'command', commandHandler);
-}
 
-// Generate command menu with HTML formatting
-function generateMenu() {
-  const uniqueCommands = new Map();
+  const telegramCommands = Array.from(global.commands.values())
+    .filter((command, index, self) => 
+      command.name && command.description && 
+      self.findIndex(c => c.name === command.name) === index 
+    )
+    .map(command => ({
+      command: command.name,
+      description: command.description,
+    }));
 
-  for (const [name, command] of global.commands) {
-    if (!command.aliases?.includes(name)) {
-      uniqueCommands.set(name, command);
-    }
+  try {
+    await bot.setMyCommands(telegramCommands);
+    console.log('Telegram command menu updated successfully');
+  } catch (error) {
+    console.error('Error setting Telegram command menu:', error);
   }
-
-  let menu = '<b>Command Menu</b>\n\n';
-  for (const [name, command] of uniqueCommands) {
-    menu += `<code>/${name}</code> - ${command.description}\n`;
-  }
-
-  return menu;
-}
-
-// Register /menu command with HTML parse_mode
-function registerMenuCommand(bot) {
-  bot.onText(/^\/menu$/, async (msg) => {
-    try {
-      const menu = generateMenu();
-      await bot.sendMessage(msg.chat.id, menu, { parse_mode: 'HTML' });
-    } catch (error) {
-      console.error('Error displaying menu:', error);
-      await bot.sendMessage(msg.chat.id, 'Error displaying command menu.');
-    }
-  });
 }
 
 async function loadEvents(bot) {
@@ -161,16 +146,12 @@ async function loadCronjobs(bot) {
 
 function setupReloadHandler(bot) {
   Promise.all([
-    loadCommands(),
+    loadCommands(bot),
     loadEvents(bot),
     loadCronjobs(bot),
-  ])
-    .then(() => {
-      registerMenuCommand(bot);
-    })
-    .catch((error) => {
-      console.error('Initial load error:', error);
-    });
+  ]).catch((error) => {
+    console.error('Initial load error:', error);
+  });
 
   bot.onText(/^\/reload$/, async (msg) => {
     if (!msg.from || !config.admins.includes(msg.from.id.toString())) {
@@ -184,7 +165,6 @@ function setupReloadHandler(bot) {
 
     try {
       await Promise.all([loadCommands(), loadEvents(bot), loadCronjobs(bot)]);
-      registerMenuCommand(bot);
       await bot.sendMessage(msg.chat.id, 'Commands, events, and cronjobs reloaded successfully.');
       console.log('Commands, events, and cronjobs reloaded');
     } catch (reloadError) {
