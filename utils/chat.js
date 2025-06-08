@@ -92,8 +92,8 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
   } catch (error) {
     console.error(`Error sending to chat ${chatId}, thread ${msg.message_thread_id || 'none'}:`, error.message);
 
-    if (error.message.includes('WEBPAGE_MEDIA_EMPTY') && retryConfig.mediaUrl && !retryConfig.hasRetriedLocal) {
-      console.log(`WEBPAGE_MEDIA_EMPTY for ${retryConfig.mediaUrl}. Attempting local download and upload.`);
+    if (error.message.includes('WEBPAGE_CURL_FAILED') && error.message.includes('WEBPAGE_MEDIA_EMPTY') && retryConfig.mediaUrl && !retryConfig.hasRetriedLocal) {
+      console.log(`Attachment Failed for ${retryConfig.mediaUrl}. Attempting local download and upload.`);
       try {
         const filePath = await downloadMedia(retryConfig.mediaUrl);
         const newArgs = retryConfig.isMediaGroup
