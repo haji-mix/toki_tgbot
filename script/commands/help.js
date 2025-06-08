@@ -1,5 +1,6 @@
 module.exports.config = {
   name: 'help',
+  aliases: ["start"],
   description: 'List all available commands',
   prefix: null, // both works
   vip: false,
