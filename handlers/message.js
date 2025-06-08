@@ -13,7 +13,10 @@ function addAnswerCallback(buttonId, callback) {
 
 function setupMessageHandler(bot) {
   bot.on('message', async (msg) => {
-    if (!msg.from) return;
+    if (!msg.from) {
+      console.log('Ignoring message with no sender information');
+      return;
+    }
 
     const chatId = msg.chat.id;
     const userId = msg.from.id.toString();
@@ -31,27 +34,42 @@ function setupMessageHandler(bot) {
     }
 
     if (msg.reply_to_message && global.replyCallbacks.has(msg.reply_to_message.message_id)) {
+      console.log(`Handling reply to message ${msg.reply_to_message.message_id} with text: "${text}"`);
       const callback = global.replyCallbacks.get(msg.reply_to_message.message_id);
-      callback(msg);
-      global.replyCallbacks.delete(msg.reply_to_message.message_id);
-      console.log(`Reply handled for message ${msg.reply_to_message.message_id}`);
+      try {
+        await callback(msg);
+        // Do NOT delete the callback to allow multiple replies
+        console.log(`Reply callback executed for message ${msg.reply_to_message.message_id}`);
+      } catch (error) {
+        console.error(`Error in reply callback for message ${msg.reply_to_message.message_id}:`, error);
+        await chat.reply('Error processing reply.');
+      }
       return;
     }
 
     const command = global.commands.get(commandName);
     if (command) {
-      if (command.prefix === true && !hasPrefix) return;
-      if (command.prefix === false && hasPrefix) return;
+      if (command.prefix === true && !hasPrefix) {
+        console.log(`Command ${commandName} ignored: requires prefix`);
+        return;
+      }
+      if (command.prefix === false && hasPrefix) {
+        console.log(`Command ${commandName} ignored: does not allow prefix`);
+        return;
+      }
       if (command.admin && !config.admins.includes(userId)) {
-        chat.reply('Admin access required.');
+        console.log(`Command ${commandName} blocked: user ${userId} is not admin`);
+        await chat.reply('Admin access required.');
         return;
       }
       if (command.vip && !config.vips.includes(userId) && !config.admins.includes(userId)) {
-        chat.reply('VIP access required.');
+        console.log(`Command ${commandName} blocked: user ${userId} is not VIP or admin`);
+        await chat.reply('VIP access required.');
         return;
       }
       if (!checkRateLimit(userId, commandName)) {
-        chat.reply('Slow down! Try again in a moment.');
+        console.log(`Command ${commandName} blocked: rate limit exceeded for user ${userId}`);
+        await chat.reply('Slow down! Try again in a moment.');
         return;
       }
 
@@ -59,11 +77,12 @@ function setupMessageHandler(bot) {
         await command.execute({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback });
         console.log(`Command ${commandName} executed by user ${userId}`);
       } catch (error) {
-        chat.reply('Error executing command.');
         console.error(`Error in command ${commandName}:`, error);
+        await chat.reply('Error executing command.');
       }
     } else if (hasPrefix) {
-      chat.reply('Unknown command. Try /help.');
+      console.log(`Unknown command: ${commandName}`);
+      await chat.reply('Unknown command. Try /help.');
     } else {
       for (const listener of global.listeners) {
         if (listener.condition(msg)) {
@@ -92,12 +111,12 @@ function setupMessageHandler(bot) {
         await callback({ bot, chat, query, chatId, userId, config });
         console.log(`Answer callback executed for button ${callbackData} by user ${userId}`);
       } catch (error) {
-        chat.reply('Error processing button action.');
         console.error(`Error in answer callback ${callbackData}:`, error);
+        await chat.reply('Error processing button action.');
       }
     } else {
-      chat.reply('Unknown button action.');
       console.log(`No callback found for button ${callbackData}`);
+      await chat.reply('Unknown button action.');
     }
   });
 }
