@@ -1,13 +1,12 @@
 module.exports.config = {
   name: 'help',
-  aliases: ["start"],
   description: 'List all available commands',
   prefix: null, // both works
   vip: false,
   admin: false,
   category: "utility",
   usage: "",
-  aliases: ['commands', 'menu'],
+  aliases: ['commands', 'menu', "start"],
   execute: async ({ chat, config }) => {
     let commandList = '';
     global.commands.forEach((command, name) => {
