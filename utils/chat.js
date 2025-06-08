@@ -129,6 +129,11 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
  */
 function createChat(bot, msg) {
   return {
+    async delete(messageid, chatId = msg.chat.id) {
+        bot.deleteMessage(chatId, messageid.message_id).catch((error) => {
+        console.error('Error deleting loading message:', error.message);
+      });
+    },
     async reply(input, chatId = msg.chat.id, options = {}) {
       let body, type = 'text', content, attachment, extraOptions = {}, parse_mode;
 

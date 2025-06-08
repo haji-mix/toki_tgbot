@@ -22,7 +22,7 @@ async function loadFiles(dir, type, handler) {
           delete require.cache[require.resolve(fullPath)];
 
           const module = require(fullPath);
-          const file = module.config || module;
+          const file = module.config || module.toki || module.ownersv2 || module.meta || module;
 
           if (!file.name || !handler.validator(file)) {
             console.warn(`Skipping invalid ${type} file: ${item.name}`);

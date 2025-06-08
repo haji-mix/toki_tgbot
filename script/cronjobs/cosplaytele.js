@@ -75,7 +75,9 @@ module.exports = {
           {
             attachment: shuffledImages[0],
             body: caption,
-            reply_markup: inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined,
+            reply_markup: { 
+                inlineKeyboard: inlineKeyboard 
+               },
           },
           this.chatId
         );

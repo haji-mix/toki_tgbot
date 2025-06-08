@@ -74,7 +74,8 @@ function setupMessageHandler(bot) {
       }
 
       try {
-        await command.execute({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback });
+          const initialize = command.execute || command.run || command.onStart || command.deploy;
+        await initialize({ bot, chat, msg, args, chatId, userId, config, addListener, addAnswerCallback });
         console.log(`Command ${commandName} executed by user ${userId}`);
       } catch (error) {
         console.error(`Error in command ${commandName}:`, error);
