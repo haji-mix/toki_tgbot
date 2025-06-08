@@ -48,7 +48,6 @@ async function loadCommands() {
   const commandHandler = {
     validator: (command) => command.name && command.execute,
     process: (command, filename) => {
-      // Ensure command has a description; default to 'No description' if missing
       command.description = command.description || 'No description provided';
       global.commands.set(command.name, command);
       if (Array.isArray(command.aliases)) {
@@ -60,32 +59,30 @@ async function loadCommands() {
   await loadFiles(path.join(__dirname, '../script/commands'), 'command', commandHandler);
 }
 
-// New function to generate and display the command menu
+// Generate command menu with HTML formatting
 function generateMenu() {
   const uniqueCommands = new Map();
-  
-  // Collect unique commands (exclude aliases)
+
   for (const [name, command] of global.commands) {
     if (!command.aliases?.includes(name)) {
       uniqueCommands.set(name, command);
     }
   }
 
-  // Format the menu
-  let menu = '*Command Menu*\n\n';
+  let menu = '<b>Command Menu</b>\n\n';
   for (const [name, command] of uniqueCommands) {
-    menu += `/${name} - ${command.description}\n`;
+    menu += `<code>/${name}</code> - ${command.description}\n`;
   }
-  
+
   return menu;
 }
 
-// Register the /menu command to display the command menu
+// Register /menu command with HTML parse_mode
 function registerMenuCommand(bot) {
   bot.onText(/^\/menu$/, async (msg) => {
     try {
       const menu = generateMenu();
-      await bot.sendMessage(msg.chat.id, menu, { parse_mode: 'Markdown' });
+      await bot.sendMessage(msg.chat.id, menu, { parse_mode: 'HTML' });
     } catch (error) {
       console.error('Error displaying menu:', error);
       await bot.sendMessage(msg.chat.id, 'Error displaying command menu.');
@@ -169,7 +166,6 @@ function setupReloadHandler(bot) {
     loadCronjobs(bot),
   ])
     .then(() => {
-      // Register the menu command after loading commands
       registerMenuCommand(bot);
     })
     .catch((error) => {
@@ -188,7 +184,6 @@ function setupReloadHandler(bot) {
 
     try {
       await Promise.all([loadCommands(), loadEvents(bot), loadCronjobs(bot)]);
-      // Re-register the menu command after reloading
       registerMenuCommand(bot);
       await bot.sendMessage(msg.chat.id, 'Commands, events, and cronjobs reloaded successfully.');
       console.log('Commands, events, and cronjobs reloaded');
