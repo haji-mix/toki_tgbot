@@ -22,7 +22,7 @@ bot.on('polling_error', (error) => {
 
 async function startBot() {
   try {
-    await setupReloadHandler(bot);
+    await setuploadHandler(bot);
     setupMessageHandler(bot);
     setupEditHandler(bot);
     console.log('Bot is running...');

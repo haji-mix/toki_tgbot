@@ -144,7 +144,7 @@ async function loadCronjobs(bot) {
   await loadFiles(path.join(__dirname, '../script/cronjobs'), 'cronjob', cronjobHandler);
 }
 
-function setupReloadHandler(bot) {
+function setuploadHandler(bot) {
   Promise.all([
     loadCommands(bot),
     loadEvents(bot),
@@ -152,30 +152,6 @@ function setupReloadHandler(bot) {
   ]).catch((error) => {
     console.error('Initial load error:', error);
   });
-
-  bot.onText(/^\/reload$/, async (msg) => {
-    if (!msg.from || !config.admins.includes(msg.from.id.toString())) {
-      try {
-        await bot.sendMessage(msg.chat.id, 'Admin access required.');
-      } catch (error) {
-        console.error('Error sending auth message:', error);
-      }
-      return;
-    }
-
-    try {
-      await Promise.all([loadCommands(), loadEvents(bot), loadCronjobs(bot)]);
-      await bot.sendMessage(msg.chat.id, 'Commands, events, and cronjobs reloaded successfully.');
-      console.log('Commands, events, and cronjobs reloaded');
-    } catch (reloadError) {
-      try {
-        await bot.sendMessage(msg.chat.id, 'Error reloading commands, events, or cronjobs.');
-      } catch (sendError) {
-        console.error('Error sending reload error message:', sendError);
-      }
-      console.error('Reload error:', reloadError);
-    }
-  });
 }
 
-module.exports = { setupReloadHandler };
+module.exports = { setuploadHandler };
