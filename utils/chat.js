@@ -1,7 +1,4 @@
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 
 /**
  * Downloads media from a URL and returns it as a Buffer
@@ -38,7 +35,7 @@ async function getMediaType(url) {
     return 'document';
   } catch (error) {
     console.error(`Error fetching MIME type for ${url}:`, error.message);
-    throw new Error(`Could not determine media type for ${url}`);
+    return null;
   }
 }
 
@@ -67,7 +64,6 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
   } catch (error) {
     console.error(`Error sending to chat ${chatId}, thread ${msg.message_thread_id || 'none'}:`, error.message);
 
-    // Handle WEBPAGE_CURL_FAILED
     if (error.message.includes('WEBPAGE_CURL_FAILED') && retryConfig.mediaUrl && !retryConfig.hasRetriedLocal) {
       console.log(`WEBPAGE_CURL_FAILED for ${retryConfig.mediaUrl}. Attempting local download and upload.`);
       try {
@@ -97,7 +93,6 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
       }
     }
 
-    // Handle TOPIC_CLOSED
     if (error.message.includes('TOPIC_CLOSED') && !hasAttemptedFallback) {
       console.log(`Topic ${msg.message_thread_id || 'unknown'} is closed in chat ${chatId}. Attempting fallback to general topic.`);
       const fallbackOptions = { ...options, message_thread_id: 0 };
@@ -107,28 +102,17 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
         const chatInfo = await bot.getChat(chatId);
         if (chatInfo.forum && !chatInfo.permissions?.can_send_messages) {
           console.log(`General topic is inaccessible in chat ${chatId}.`);
-          return { message_id: null }; // Return a fallback object
+          return { message_id: null };
         }
         return await bot.sendMessage(chatId, 'This topic is closed. Please use an active topic.', fallbackOptions);
       } catch (fallbackError) {
         console.error('Error during fallback to general topic:', fallbackError.message);
-        return { message_id: null }; // Return a fallback object
+        return { message_id: null };
       }
     }
 
-    // If all retries fail, return a fallback object
     return { message_id: null };
   }
-}
-
-/**
- * Normalizes media content to always return an array
- * @param {string|Array} content - The media content
- * @returns {Array} - Always returns an array
- */
-function normalizeMediaContent(content) {
-  if (!content) return [];
-  return Array.isArray(content) ? content : [content];
 }
 
 /**
@@ -140,10 +124,11 @@ function normalizeMediaContent(content) {
 function createChat(bot, msg) {
   return {
     async delete(messageid, chatId = msg.chat.id) {
-        bot.deleteMessage(chatId, messageid.message_id).catch((error) => {
+      bot.deleteMessage(chatId, messageid.message_id).catch((error) => {
         console.error('Error deleting loading message:', error.message);
       });
     },
+
     async reply(input, chatId = msg.chat.id, options = {}) {
       let body, type = 'text', content, attachment, extraOptions = {}, parse_mode;
 
@@ -160,10 +145,12 @@ function createChat(bot, msg) {
           ...extraOptions 
         } = input);
 
-        if (!input.type && (attachment || content)) {
-          type = Array.isArray(attachment || content) ? 'media group' : 
-                attachment ? getMediaType(attachment) : 
-                getMediaType(content);
+        if (typeof attachment === 'string' && !type) {
+          type = 'auto';
+        }
+
+        if (!input.type && Array.isArray(attachment)) {
+          type = 'media group';
           parse_mode = 'Markdown';
         }
       } else {
@@ -171,7 +158,7 @@ function createChat(bot, msg) {
         return { message_id: null };
       }
 
-      const mediaContent = normalizeMediaContent(content || attachment);
+      const mediaContent = content || attachment;
       const finalOptions = { ...options, ...extraOptions, ...(parse_mode ? { parse_mode } : {}) };
 
       try {
@@ -180,20 +167,53 @@ function createChat(bot, msg) {
             if (body) return await sendWithFallback(bot.sendMessage.bind(bot), bot, chatId, msg, finalOptions, [body]);
             return { message_id: null };
 
+          case 'auto':
+            if (typeof mediaContent === 'string') {
+              try {
+                const mediaType = await getMediaType(mediaContent);
+                const sendMethod =
+                  mediaType === 'photo' ? bot.sendPhoto :
+                  mediaType === 'video' ? bot.sendVideo :
+                  mediaType === 'audio' ? bot.sendAudio :
+                  mediaType === 'animation' ? bot.sendAnimation :
+                  bot.sendDocument;
+
+                return await sendWithFallback(
+                  sendMethod.bind(bot),
+                  bot,
+                  chatId,
+                  msg,
+                  { caption: body, ...finalOptions },
+                  [mediaContent],
+                  { mediaUrl: mediaContent }
+                );
+              } catch (error) {
+                console.error(`Error determining media type: ${error.message}`);
+                return await sendWithFallback(
+                  bot.sendDocument.bind(bot),
+                  bot,
+                  chatId,
+                  msg,
+                  { caption: body, ...finalOptions },
+                  [mediaContent],
+                  { mediaUrl: mediaContent }
+                );
+              }
+            }
+            return { message_id: null };
+
           case 'photo':
-          case 'video':
-          case 'audio':
-            if (mediaContent.length > 0) {
-              if (mediaContent.length > 1) {
+            if (mediaContent) {
+              if (Array.isArray(mediaContent)) {
                 try {
                   const media = await Promise.all(
                     mediaContent.slice(0, 10).map(async (url, index) => ({
-                      type: await getMediaType(url),
+                      type: 'photo',
                       media: url,
                       caption: index === 0 ? body : undefined,
                       ...(parse_mode && index === 0 ? { parse_mode } : {}),
                     })
-                  ));
+                  );
                   return await sendWithFallback(
                     bot.sendMediaGroup.bind(bot),
                     bot,
@@ -204,41 +224,203 @@ function createChat(bot, msg) {
                     { isMediaGroup: true }
                   );
                 } catch (error) {
-                  console.error(`Error processing media group: ${error.message}`);
+                  console.error(`Error processing photo media group: ${error.message}`);
                   return { message_id: null };
                 }
               }
-              
-              // Single media item
-              try {
-                const mediaUrl = mediaContent[0];
-                const mediaType = await getMediaType(mediaUrl);
-                const sendMethod =
-                  mediaType === 'photo' ? bot.sendPhoto :
-                  mediaType === 'video' ? bot.sendVideo :
-                  mediaType === 'audio' ? bot.sendAudio : null;
-                if (sendMethod) {
+              return await sendWithFallback(
+                bot.sendPhoto.bind(bot),
+                bot,
+                chatId,
+                msg,
+                { caption: body, ...finalOptions },
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'video':
+            if (mediaContent) {
+              if (Array.isArray(mediaContent)) {
+                try {
+                  const media = await Promise.all(
+                    mediaContent.slice(0, 10).map(async (url, index) => ({
+                      type: 'video',
+                      media: url,
+                      caption: index === 0 ? body : undefined,
+                      ...(parse_mode && index === 0 ? { parse_mode } : {}),
+                    })
+                  );
                   return await sendWithFallback(
-                    sendMethod.bind(bot),
+                    bot.sendMediaGroup.bind(bot),
                     bot,
                     chatId,
                     msg,
-                    { caption: body, ...finalOptions },
-                    [mediaUrl],
-                    { mediaUrl }
+                    finalOptions,
+                    [media],
+                    { isMediaGroup: true }
                   );
+                } catch (error) {
+                  console.error(`Error processing video media group: ${error.message}`);
+                  return { message_id: null };
                 }
-                console.error(`Unsupported media type: ${mediaType}`);
-                return { message_id: null };
-              } catch (error) {
-                console.error(`Error determining media type: ${error.message}`);
-                return { message_id: null };
               }
+              return await sendWithFallback(
+                bot.sendVideo.bind(bot),
+                bot,
+                chatId,
+                msg,
+                { caption: body, ...finalOptions },
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'audio':
+            if (mediaContent) {
+              if (Array.isArray(mediaContent)) {
+                try {
+                  const media = await Promise.all(
+                    mediaContent.slice(0, 10).map(async (url, index) => ({
+                      type: 'audio',
+                      media: url,
+                      caption: index === 0 ? body : undefined,
+                      ...(parse_mode && index === 0 ? { parse_mode } : {}),
+                    })
+                  );
+                  return await sendWithFallback(
+                    bot.sendMediaGroup.bind(bot),
+                    bot,
+                    chatId,
+                    msg,
+                    finalOptions,
+                    [media],
+                    { isMediaGroup: true }
+                  );
+                } catch (error) {
+                  console.error(`Error processing audio media group: ${error.message}`);
+                  return { message_id: null };
+                }
+              }
+              return await sendWithFallback(
+                bot.sendAudio.bind(bot),
+                bot,
+                chatId,
+                msg,
+                { caption: body, ...finalOptions },
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'document':
+            if (mediaContent) {
+              if (Array.isArray(mediaContent)) {
+                try {
+                  const media = await Promise.all(
+                    mediaContent.slice(0, 10).map(async (url, index) => ({
+                      type: 'document',
+                      media: url,
+                      caption: index === 0 ? body : undefined,
+                      ...(parse_mode && index === 0 ? { parse_mode } : {}),
+                    })
+                  );
+                  return await sendWithFallback(
+                    bot.sendMediaGroup.bind(bot),
+                    bot,
+                    chatId,
+                    msg,
+                    finalOptions,
+                    [media],
+                    { isMediaGroup: true }
+                  );
+                } catch (error) {
+                  console.error(`Error processing document media group: ${error.message}`);
+                  return { message_id: null };
+                }
+              }
+              return await sendWithFallback(
+                bot.sendDocument.bind(bot),
+                bot,
+                chatId,
+                msg,
+                { caption: body, ...finalOptions },
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'animation':
+            if (mediaContent) {
+              if (Array.isArray(mediaContent)) {
+                try {
+                  const media = await Promise.all(
+                    mediaContent.slice(0, 10).map(async (url, index) => ({
+                      type: 'animation',
+                      media: url,
+                      caption: index === 0 ? body : undefined,
+                      ...(parse_mode && index === 0 ? { parse_mode } : {}),
+                    })
+                  );
+                  return await sendWithFallback(
+                    bot.sendMediaGroup.bind(bot),
+                    bot,
+                    chatId,
+                    msg,
+                    finalOptions,
+                    [media],
+                    { isMediaGroup: true }
+                  );
+                } catch (error) {
+                  console.error(`Error processing animation media group: ${error.message}`);
+                  return { message_id: null };
+                }
+              }
+              return await sendWithFallback(
+                bot.sendAnimation.bind(bot),
+                bot,
+                chatId,
+                msg,
+                { caption: body, ...finalOptions },
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'sticker':
+            if (mediaContent) {
+              return await sendWithFallback(
+                bot.sendSticker.bind(bot),
+                bot,
+                chatId,
+                msg,
+                finalOptions,
+                [mediaContent],
+                { mediaUrl: mediaContent }
+              );
+            }
+            return { message_id: null };
+
+          case 'location':
+            if (mediaContent?.latitude && mediaContent?.longitude) {
+              return await sendWithFallback(
+                bot.sendLocation.bind(bot),
+                bot,
+                chatId,
+                msg,
+                finalOptions,
+                [mediaContent.latitude, mediaContent.longitude]
+              );
             }
             return { message_id: null };
 
           case 'media group':
-            if (mediaContent.length > 0) {
+            if (Array.isArray(mediaContent)) {
               try {
                 const media = await Promise.all(
                   mediaContent.slice(0, 10).map(async (item, index) => {
@@ -265,59 +447,11 @@ function createChat(bot, msg) {
                 return { message_id: null };
               }
             }
-            throw new Error('Media group requires media items');
-
-          case 'sticker':
-            if (mediaContent.length > 0) return await sendWithFallback(
-              bot.sendSticker.bind(bot),
-              bot,
-              chatId,
-              msg,
-              finalOptions,
-              [mediaContent[0]],
-              { mediaUrl: mediaContent[0] }
-            );
-            return { message_id: null };
-
-          case 'document':
-            if (mediaContent.length > 0) return await sendWithFallback(
-              bot.sendDocument.bind(bot),
-              bot,
-              chatId,
-              msg,
-              { caption: body, ...finalOptions },
-              [mediaContent[0]],
-              { mediaUrl: mediaContent[0] }
-            );
-            return { message_id: null };
-
-          case 'location':
-            if (mediaContent[0]?.latitude && mediaContent[0]?.longitude) {
-              return await sendWithFallback(
-                bot.sendLocation.bind(bot),
-                bot,
-                chatId,
-                msg,
-                finalOptions,
-                [mediaContent[0].latitude, mediaContent[0].longitude]
-              );
-            }
-            return { message_id: null };
-
-          case 'animation':
-            if (mediaContent.length > 0) return await sendWithFallback(
-              bot.sendAnimation.bind(bot),
-              bot,
-              chatId,
-              msg,
-              { caption: body, ...finalOptions },
-              [mediaContent[0]],
-              { mediaUrl: mediaContent[0] }
-            );
             return { message_id: null };
 
           default:
-            throw new Error(`Unsupported message type: ${type}`);
+            console.error(`Unsupported message type: ${type}`);
+            return { message_id: null };
         }
       } catch (error) {
         console.error(`Error processing ${type} for chat ${chatId}:`, error.message);
@@ -336,298 +470,35 @@ function createChat(bot, msg) {
     },
 
     async sendPhoto(input, chatId = msg.chat.id, options = {}) {
-      let photo, attachment, parse_mode;
-      if (typeof input === 'string') {
-        photo = input;
-        parse_mode = 'Markdown';
-      } else {
-        ({ photo, attachment, parse_mode = 'Markdown' } = input);
-      }
-      const mediaContent = normalizeMediaContent(photo || attachment);
-
-      if (mediaContent.length === 0) {
-        throw new Error('Photo or attachment must be provided');
-      }
-
-      if (mediaContent.length > 1) {
-        try {
-          const media = await Promise.all(
-            mediaContent.slice(0, 10).map(async (url, index) => ({
-              type: await getMediaType(url),
-              media: url,
-              caption: index === 0 ? options.caption : undefined,
-              ...(parse_mode && index === 0 ? { parse_mode } : {}),
-            }))
-          );
-          return await sendWithFallback(
-            bot.sendMediaGroup.bind(bot),
-            bot,
-            chatId,
-            msg,
-            options,
-            [media],
-            { isMediaGroup: true }
-          );
-        } catch (error) {
-          console.error(`Error processing photo media group: ${error.message}`);
-          return { message_id: null };
-        }
-      }
-      
-      // Single photo
-      try {
-        const mediaType = await getMediaType(mediaContent[0]);
-        if (mediaType === 'photo') {
-          return await sendWithFallback(
-            bot.sendPhoto.bind(bot),
-            bot,
-            chatId,
-            msg,
-            { ...options, parse_mode },
-            [mediaContent[0]],
-            { mediaUrl: mediaContent[0] }
-          );
-        }
-        console.error(`Unsupported media type for photo: ${mediaType}`);
-        return { message_id: null };
-      } catch (error) {
-        console.error(`Error determining photo type: ${error.message}`);
-        return { message_id: null };
-      }
+      return this.reply({ ...input, type: 'photo' }, chatId, options);
     },
 
     async sendVideo(input, chatId = msg.chat.id, options = {}) {
-      let video, attachment, parse_mode;
-      if (typeof input === 'string') {
-        video = input;
-        parse_mode = 'Markdown';
-      } else {
-        ({ video, attachment, parse_mode = 'Markdown' } = input);
-      }
-      const mediaContent = normalizeMediaContent(video || attachment);
-
-      if (mediaContent.length === 0) {
-        throw new Error('Video or attachment must be provided');
-      }
-
-      if (mediaContent.length > 1) {
-        try {
-          const media = await Promise.all(
-            mediaContent.slice(0, 10).map(async (url, index) => ({
-              type: await getMediaType(url),
-              media: url,
-              caption: index === 0 ? options.caption : undefined,
-              ...(parse_mode && index === 0 ? { parse_mode } : {}),
-            }))
-          );
-          return await sendWithFallback(
-            bot.sendMediaGroup.bind(bot),
-            bot,
-            chatId,
-            msg,
-            options,
-            [media],
-            { isMediaGroup: true }
-          );
-        } catch (error) {
-          console.error(`Error processing video media group: ${error.message}`);
-          return { message_id: null };
-        }
-      }
-      
-      // Single video
-      try {
-        const mediaType = await getMediaType(mediaContent[0]);
-        if (mediaType === 'video') {
-          return await sendWithFallback(
-            bot.sendVideo.bind(bot),
-            bot,
-            chatId,
-            msg,
-            { ...options, parse_mode },
-            [mediaContent[0]],
-            { mediaUrl: mediaContent[0] }
-          );
-        }
-        console.error(`Unsupported media type for video: ${mediaType}`);
-        return { message_id: null };
-      } catch (error) {
-        console.error(`Error determining video type: ${error.message}`);
-        return { message_id: null };
-      }
+      return this.reply({ ...input, type: 'video' }, chatId, options);
     },
 
     async sendAudio(input, chatId = msg.chat.id, options = {}) {
-      let audio, attachment, parse_mode;
-      if (typeof input === 'string') {
-        audio = input;
-        parse_mode = 'Markdown';
-      } else {
-        ({ audio, attachment, parse_mode = 'Markdown' } = input);
-      }
-      const mediaContent = normalizeMediaContent(audio || attachment);
-
-      if (mediaContent.length === 0) {
-        throw new Error('Audio or attachment must be provided');
-      }
-
-      if (mediaContent.length > 1) {
-        try {
-          const media = await Promise.all(
-            mediaContent.slice(0, 10).map(async (url, index) => ({
-              type: await getMediaType(url),
-              media: url,
-              caption: index === 0 ? options.caption : undefined,
-              ...(parse_mode && index === 0 ? { parse_mode } : {}),
-            }))
-          );
-          return await sendWithFallback(
-            bot.sendMediaGroup.bind(bot),
-            bot,
-            chatId,
-            msg,
-            options,
-            [media],
-            { isMediaGroup: true }
-          );
-        } catch (error) {
-          console.error(`Error processing audio media group: ${error.message}`);
-          return { message_id: null };
-        }
-      }
-      
-      // Single audio
-      try {
-        const mediaType = await getMediaType(mediaContent[0]);
-        if (mediaType === 'audio') {
-          return await sendWithFallback(
-            bot.sendAudio.bind(bot),
-            bot,
-            chatId,
-            msg,
-            { ...options, parse_mode },
-            [mediaContent[0]],
-            { mediaUrl: mediaContent[0] }
-          );
-        }
-        console.error(`Unsupported media type for audio: ${mediaType}`);
-        return { message_id: null };
-      } catch (error) {
-        console.error(`Error determining audio type: ${error.message}`);
-        return { message_id: null };
-      }
+      return this.reply({ ...input, type: 'audio' }, chatId, options);
     },
 
     async sendDocument(input, chatId = msg.chat.id, options = {}) {
-      let document, attachment, parse_mode;
-      if (typeof input === 'string') {
-        document = input;
-        parse_mode = 'Markdown';
-      } else {
-        ({ document, attachment, parse_mode = 'Markdown' } = input);
-      }
-      const mediaContent = normalizeMediaContent(document || attachment);
-
-      if (mediaContent.length === 0) {
-        throw new Error('Document or attachment must be provided');
-      }
-
-      if (mediaContent.length > 1) {
-        try {
-          const media = await Promise.all(
-            mediaContent.slice(0, 10).map(async (url, index) => ({
-              type: await getMediaType(url),
-              media: url,
-              caption: index === 0 ? options.caption : undefined,
-              ...(parse_mode && index === 0 ? { parse_mode } : {}),
-            }))
-          );
-          return await sendWithFallback(
-            bot.sendMediaGroup.bind(bot),
-            bot,
-            chatId,
-            msg,
-            options,
-            [media],
-            { isMediaGroup: true }
-          );
-        } catch (error) {
-          console.error(`Error processing document media group: ${error.message}`);
-          return { message_id: null };
-        }
-      }
-      
-      return await sendWithFallback(
-        bot.sendDocument.bind(bot),
-        bot,
-        chatId,
-        msg,
-        { ...options, parse_mode },
-        [mediaContent[0]],
-        { mediaUrl: mediaContent[0] }
-      );
-    },
-
-    async sendLocation(latitude, longitude, chatId = msg.chat.id, options = {}) {
-      return await sendWithFallback(
-        bot.sendLocation.bind(bot),
-        bot,
-        chatId,
-        msg,
-        options,
-        [latitude, longitude]
-      );
+      return this.reply({ ...input, type: 'document' }, chatId, options);
     },
 
     async sendAnimation(input, chatId = msg.chat.id, options = {}) {
-      let animation, attachment, parse_mode;
-      if (typeof input === 'string') {
-        animation = input;
-        parse_mode = 'Markdown';
-      } else {
-        ({ animation, attachment, parse_mode = 'Markdown' } = input);
-      }
-      const mediaContent = normalizeMediaContent(animation || attachment);
-
-      if (mediaContent.length === 0) {
-        throw new Error('Animation or attachment must be provided');
-      }
-
-      if (mediaContent.length > 1) {
-        try {
-          const media = await Promise.all(
-            mediaContent.slice(0, 10).map(async (url, index) => ({
-              type: await getMediaType(url),
-              media: url,
-              caption: index === 0 ? options.caption : undefined,
-              ...(parse_mode && index === 0 ? { parse_mode } : {}),
-            }))
-          );
-          return await sendWithFallback(
-            bot.sendMediaGroup.bind(bot),
-            bot,
-            chatId,
-            msg,
-            options,
-            [media],
-            { isMediaGroup: true }
-          );
-        } catch (error) {
-          console.error(`Error processing animation media group: ${error.message}`);
-          return { message_id: null };
-        }
-      }
-      
-      return await sendWithFallback(
-        bot.sendAnimation.bind(bot),
-        bot,
-        chatId,
-        msg,
-        { ...options, parse_mode },
-        [mediaContent[0]],
-        { mediaUrl: mediaContent[0] }
-      );
+      return this.reply({ ...input, type: 'animation' }, chatId, options);
     },
+
+    async sendSticker(input, chatId = msg.chat.id, options = {}) {
+      return this.reply({ ...input, type: 'sticker' }, chatId, options);
+    },
+
+    async sendLocation(latitude, longitude, chatId = msg.chat.id, options = {}) {
+      return this.reply({
+        type: 'location',
+        attachment: { latitude, longitude }
+      }, chatId, options);
+    }
   };
 }
 
