@@ -15,11 +15,12 @@ async function downloadMedia(url) {
     const mediaBuffer = Buffer.from(response.data);
 
     const contentType = response.headers['content-type'];
-    let extension = '.bin'; // Fallback extension
+    let extension = '.bin';
     if (contentType) {
       if (contentType.startsWith('image/')) {
         extension = contentType.includes('jpeg') || contentType.includes('jpg') ? '.jpg' :
                     contentType.includes('png') ? '.png' :
+                    contentType.includes('webp') ? '.jpg' :
                     contentType.includes('gif') ? '.gif' : '.jpg';
       } else if (contentType.startsWith('video/')) {
         extension = contentType.includes('mp4') ? '.mp4' : '.mp4';
