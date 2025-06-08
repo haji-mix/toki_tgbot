@@ -4,18 +4,42 @@ const path = require('path');
 const os = require('os');
 
 /**
- * Downloads media from a URL and returns it as a Buffer
+ * Downloads media from a URL and saves it as a file
  * @param {string} url - The URL of the media
- * @returns {Promise<Buffer>} - The media as a Buffer
- * @throws {Error} - If download fails
+ * @returns {Promise<string>} - The path to the saved file
+ * @throws {Error} - If download or file saving fails
  */
 async function downloadMedia(url) {
   try {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
-    return Buffer.from(response.data);
+    const mediaBuffer = Buffer.from(response.data);
+
+    const contentType = response.headers['content-type'];
+    let extension = '.bin'; // Fallback extension
+    if (contentType) {
+      if (contentType.startsWith('image/')) {
+        extension = contentType.includes('jpeg') || contentType.includes('jpg') ? '.jpg' :
+                    contentType.includes('png') ? '.png' :
+                    contentType.includes('gif') ? '.gif' : '.jpg';
+      } else if (contentType.startsWith('video/')) {
+        extension = contentType.includes('mp4') ? '.mp4' : '.mp4';
+      } else if (contentType.startsWith('audio/')) {
+        extension = contentType.includes('mpeg') ? '.mp3' : '.mp3';
+      } else if (contentType.includes('pdf')) {
+        extension = '.pdf';
+      }
+    }
+
+    const filename = `media_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${extension}`;
+    const filePath = path.join(os.tmpdir(), filename);
+
+    await fs.promises.writeFile(filePath, mediaBuffer);
+    console.log(`Media saved to ${filePath}`);
+    
+    return filePath;
   } catch (error) {
-    console.error(`Error downloading media from ${url}:`, error.message);
-    return;
+    console.error(`Error downloading or saving media from ${url}:`, error.message);
+    throw error;
   }
 }
 
@@ -68,12 +92,12 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
     console.error(`Error sending to chat ${chatId}, thread ${msg.message_thread_id || 'none'}:`, error.message);
 
     if (error.message.includes('WEBPAGE_MEDIA_EMPTY') && retryConfig.mediaUrl && !retryConfig.hasRetriedLocal) {
-      console.log(`WEBPAGE_CURL_FAILED for ${retryConfig.mediaUrl}. Attempting local download and upload.`);
+      console.log(`WEBPAGE_MEDIA_EMPTY for ${retryConfig.mediaUrl}. Attempting local download and upload.`);
       try {
-        const mediaBuffer = await downloadMedia(retryConfig.mediaUrl);
+        const filePath = await downloadMedia(retryConfig.mediaUrl);
         const newArgs = retryConfig.isMediaGroup
-          ? args.map(item => item.media === retryConfig.mediaUrl ? { ...item, media: mediaBuffer } : item)
-          : [mediaBuffer, ...args.slice(1)];
+          ? args.map(item => item.media === retryConfig.mediaUrl ? { ...item, media: `file://${filePath}` } : item)
+          : [filePath, ...args.slice(1)];
         return await sendWithFallback(
           sendFunction,
           bot,
@@ -84,7 +108,7 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
           { ...retryConfig, hasRetriedLocal: true }
         );
       } catch (downloadError) {
-        console.error(`Failed to download and upload media: ${downloadError.message}`);
+        console.error(`Failed to download and save media: ${downloadError.message}`);
         return await sendWithFallback(
           bot.sendMessage.bind(bot),
           bot,
@@ -597,8 +621,8 @@ function createChat(bot, msg) {
         bot.sendLocation.bind(bot),
         bot,
         chatId,
-        msg,
-        options,
+          msg,
+          options,
         [latitude, longitude]
       );
     },
@@ -637,7 +661,7 @@ function createChat(bot, msg) {
             { isMediaGroup: true }
           );
         } catch (error) {
-          console.error(`Error processing animation media group: ${error.message}`);
+          console.error(`Error processing animation media: ${error.message}`);
           return { message_id: null };
         }
       }
