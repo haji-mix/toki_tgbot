@@ -8,10 +8,10 @@ module.exports = {
     execute: async ({ bot, chat, msg, args, chatId, userId, config, addAnswerCallback }) => {
       const sentMessage = await chat.reply('Reply to this message with "hello"!');
 
-      global.replyCallbacks.set(sentMessage.messageId, async (replyMsg) => {
-        const chat = await createChat(bot, replyMsg);
+      // Register a reply callback for the sent message
+      global.replyCallbacks.set(sentMessage.message_id, async (replyMsg) => {
         if (replyMsg.text && replyMsg.text.toLowerCase() === 'hello') {
-           chat.reply('hi');
+          await chat.reply('hi');
         }
       });
     }
