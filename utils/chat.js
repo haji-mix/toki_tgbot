@@ -51,7 +51,7 @@ async function getMediaType(url) {
  * @param {Object} options - Additional options
  * @param {Array} args - Arguments for the send function
  * @param {Object} retryConfig - Retry configuration for WEBPAGE_CURL_FAILED
- * @returns {Promise<Object|undefined>} - The sent message or undefined
+ * @returns {Promise<Object>} - The sent message object
  */
 async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, retryConfig = {}) {
   const finalOptions = {
@@ -86,7 +86,7 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
         );
       } catch (downloadError) {
         console.error(`Failed to download and upload media: ${downloadError.message}`);
-        await sendWithFallback(
+        return await sendWithFallback(
           bot.sendMessage.bind(bot),
           bot,
           chatId,
@@ -94,7 +94,6 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
           { message_thread_id: 0 },
           ['Failed to send media due to an inaccessible URL.']
         );
-        return;
       }
     }
 
@@ -108,14 +107,17 @@ async function sendWithFallback(sendFunction, bot, chatId, msg, options, args, r
         const chatInfo = await bot.getChat(chatId);
         if (chatInfo.forum && !chatInfo.permissions?.can_send_messages) {
           console.log(`General topic is inaccessible in chat ${chatId}.`);
-          return;
+          return { message_id: null }; // Return a fallback object
         }
         return await bot.sendMessage(chatId, 'This topic is closed. Please use an active topic.', fallbackOptions);
       } catch (fallbackError) {
         console.error('Error during fallback to general topic:', fallbackError.message);
-        return;
+        return { message_id: null }; // Return a fallback object
       }
     }
+
+    // If all retries fail, return a fallback object
+    return { message_id: null };
   }
 }
 
@@ -149,7 +151,7 @@ function createChat(bot, msg) {
         }
       } else {
         console.error('Invalid input type for reply(). Expected string or object.');
-        return;
+        return { message_id: null };
       }
 
       const mediaContent = content || attachment;
@@ -159,7 +161,7 @@ function createChat(bot, msg) {
         switch (type.toLowerCase()) {
           case 'text':
             if (body) return await sendWithFallback(bot.sendMessage.bind(bot), bot, chatId, msg, finalOptions, [body]);
-            break;
+            return { message_id: null };
 
           case 'photo':
           case 'video':
@@ -173,8 +175,8 @@ function createChat(bot, msg) {
                       media: url,
                       caption: index === 0 ? body : undefined,
                       ...(parse_mode && index === 0 ? { parse_mode } : {}),
-                    }))
-                  );
+                    })
+                  ));
                   return await sendWithFallback(
                     bot.sendMediaGroup.bind(bot),
                     bot,
@@ -186,7 +188,7 @@ function createChat(bot, msg) {
                   );
                 } catch (error) {
                   console.error(`Error processing media group: ${error.message}`);
-                  return;
+                  return { message_id: null };
                 }
               }
               
@@ -208,13 +210,13 @@ function createChat(bot, msg) {
                   );
                 }
                 console.error(`Unsupported media type: ${mediaType}`);
-                return;
+                return { message_id: null };
               } catch (error) {
                 console.error(`Error determining media type: ${error.message}`);
-                return;
+                return { message_id: null };
               }
             }
-            break;
+            return { message_id: null };
 
           case 'media group':
             if (Array.isArray(mediaContent)) {
@@ -241,7 +243,7 @@ function createChat(bot, msg) {
                 );
               } catch (error) {
                 console.error(`Error processing media group: ${error.message}`);
-                return;
+                return { message_id: null };
               }
             }
             throw new Error('Media group requires an array of media items');
@@ -256,7 +258,7 @@ function createChat(bot, msg) {
               [mediaContent],
               { mediaUrl: mediaContent }
             );
-            break;
+            return { message_id: null };
 
           case 'document':
             if (mediaContent) return await sendWithFallback(
@@ -268,7 +270,7 @@ function createChat(bot, msg) {
               [mediaContent],
               { mediaUrl: mediaContent }
             );
-            break;
+            return { message_id: null };
 
           case 'location':
             if (mediaContent?.latitude && mediaContent?.longitude) {
@@ -281,7 +283,7 @@ function createChat(bot, msg) {
                 [mediaContent.latitude, mediaContent.longitude]
               );
             }
-            break;
+            return { message_id: null };
 
           case 'animation':
             if (mediaContent) return await sendWithFallback(
@@ -293,7 +295,7 @@ function createChat(bot, msg) {
               [mediaContent],
               { mediaUrl: mediaContent }
             );
-            break;
+            return { message_id: null };
 
           default:
             throw new Error(`Unsupported message type: ${type}`);
@@ -301,7 +303,7 @@ function createChat(bot, msg) {
       } catch (error) {
         console.error(`Error processing ${type} for chat ${chatId}:`, error.message);
         if (!error.message.includes('TOPIC_CLOSED') && !error.message.includes('WEBPAGE_CURL_FAILED')) {
-          await sendWithFallback(
+          return await sendWithFallback(
             bot.sendMessage.bind(bot),
             bot,
             chatId,
@@ -310,6 +312,7 @@ function createChat(bot, msg) {
             ['Error processing the request.']
           );
         }
+        return { message_id: null };
       }
     },
 
@@ -348,7 +351,7 @@ function createChat(bot, msg) {
           );
         } catch (error) {
           console.error(`Error processing photo media group: ${error.message}`);
-          return;
+          return { message_id: null };
         }
       }
       
@@ -366,10 +369,10 @@ function createChat(bot, msg) {
           );
         }
         console.error(`Unsupported media type for photo: ${mediaType}`);
-        return;
+        return { message_id: null };
       } catch (error) {
         console.error(`Error determining photo type: ${error.message}`);
-        return;
+        return { message_id: null };
       }
     },
 
@@ -408,7 +411,7 @@ function createChat(bot, msg) {
           );
         } catch (error) {
           console.error(`Error processing video media group: ${error.message}`);
-          return;
+          return { message_id: null };
         }
       }
       
@@ -426,10 +429,10 @@ function createChat(bot, msg) {
           );
         }
         console.error(`Unsupported media type for video: ${mediaType}`);
-        return;
+        return { message_id: null };
       } catch (error) {
         console.error(`Error determining video type: ${error.message}`);
-        return;
+        return { message_id: null };
       }
     },
 
@@ -468,7 +471,7 @@ function createChat(bot, msg) {
           );
         } catch (error) {
           console.error(`Error processing audio media group: ${error.message}`);
-          return;
+          return { message_id: null };
         }
       }
       
@@ -486,10 +489,10 @@ function createChat(bot, msg) {
           );
         }
         console.error(`Unsupported media type for audio: ${mediaType}`);
-        return;
+        return { message_id: null };
       } catch (error) {
         console.error(`Error determining audio type: ${error.message}`);
-        return;
+        return { message_id: null };
       }
     },
 
@@ -528,7 +531,7 @@ function createChat(bot, msg) {
           );
         } catch (error) {
           console.error(`Error processing document media group: ${error.message}`);
-          return;
+          return { message_id: null };
         }
       }
       
@@ -589,7 +592,7 @@ function createChat(bot, msg) {
           );
         } catch (error) {
           console.error(`Error processing animation media group: ${error.message}`);
-          return;
+          return { message_id: null };
         }
       }
       

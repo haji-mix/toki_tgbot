@@ -15,8 +15,8 @@ module.exports = {
       });
       
       addAnswerCallback(buttonId, async ({ chat, query }) => {
-        await chat.reply(`Button clicked by user ${query.from.id}!`);
+         chat.reply(`Button clicked by user ${query.from.id}!`);
       });
     }
   }
-};
+    };
