@@ -39,7 +39,7 @@ async function downloadMedia(url) {
     return filePath;
   } catch (error) {
     console.error(`Error downloading or saving media from ${url}:`, error.message);
-    throw error;
+    return;
   }
 }
 
