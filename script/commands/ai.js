@@ -30,12 +30,11 @@ module.exports = {
   }
 };
 
-async function gpt4o(prompt, uid) {
+async function gpt4o(ask, uid) {
     try {
 const axios = require("axios");
 const msg = await axios.post(global.api.hajime + "/api/gpt4o", {
-          ask: prompt,
-          uid: userId
+          ask, uid
       });
         return msg.data.answer;
       } catch (error) {
