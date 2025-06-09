@@ -56,7 +56,6 @@ module.exports = {
         try {
           await bot.answerCallbackQuery(query.id, { text: 'Fetching another cosplay...' });
 
-          // Delete all previous messages (both media group and button message)
           for (const msgId of previousMessages) {
             await bot.deleteMessage(chatId, msgId).catch((error) => {
               console.error('Error deleting message:', error.message);
@@ -102,21 +101,18 @@ module.exports = {
 
       const mediaGroup = shuffledImages.slice(0, 10);
       
-      // Send media group
       const mediaGroupMessages = await chat.reply({
         attachment: mediaGroup,
         body: caption,
         reply_to_message_id: replyToMsgId,
       });
-      
-      // Store all message IDs from the media group
+    
       if (Array.isArray(mediaGroupMessages)) {
         previousMessages.push(...mediaGroupMessages.map(m => m.message_id));
       } else {
         previousMessages.push(mediaGroupMessages.message_id);
       }
 
-      // Send button message
       const buttonMessage = await chat.reply({
         body: 'Want another cosplay or download?',
         reply_to_message_id: replyToMsgId,

@@ -6,7 +6,7 @@ module.exports.config = {
   admin: false,
   category: "utility",
   usage: "",
-  aliases: ['commands', 'menu'],
+  aliases: ['commands', 'menu', "start"],
   execute: async ({ chat, config }) => {
     let commandList = '';
     global.commands.forEach((command, name) => {

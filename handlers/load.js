@@ -42,11 +42,11 @@ async function loadFiles(dir, type, handler) {
   }
 }
 
-async function loadCommands() {
+async function loadCommands(bot) {
   global.commands.clear();
 
   const commandHandler = {
-    validator: (command) => command.name && command.execute,
+    validator: (command) => command.name && command.execute && command.description, // Ensure description exists
     process: (command, filename) => {
       global.commands.set(command.name, command);
       if (Array.isArray(command.aliases)) {
@@ -56,6 +56,23 @@ async function loadCommands() {
   };
 
   await loadFiles(path.join(__dirname, '../script/commands'), 'command', commandHandler);
+
+  const telegramCommands = Array.from(global.commands.values())
+    .filter((command, index, self) => 
+      command.name && command.description && 
+      self.findIndex(c => c.name === command.name) === index 
+    )
+    .map(command => ({
+      command: command.name,
+      description: command.description,
+    }));
+
+  try {
+    await bot.setMyCommands(telegramCommands);
+    console.log('Telegram command menu updated successfully');
+  } catch (error) {
+    console.error('Error setting Telegram command menu:', error);
+  }
 }
 
 async function loadEvents(bot) {
@@ -127,38 +144,14 @@ async function loadCronjobs(bot) {
   await loadFiles(path.join(__dirname, '../script/cronjobs'), 'cronjob', cronjobHandler);
 }
 
-function setupReloadHandler(bot) {
+function setuploadHandler(bot) {
   Promise.all([
-    loadCommands(),
+    loadCommands(bot),
     loadEvents(bot),
     loadCronjobs(bot),
   ]).catch((error) => {
     console.error('Initial load error:', error);
   });
-
-  bot.onText(/^\/reload$/, async (msg) => {
-    if (!msg.from || !config.admins.includes(msg.from.id.toString())) {
-      try {
-        await bot.sendMessage(msg.chat.id, 'Admin access required.');
-      } catch (error) {
-        console.error('Error sending auth message:', error);
-      }
-      return;
-    }
-
-    try {
-      await Promise.all([loadCommands(), loadEvents(bot), loadCronjobs(bot)]);
-      await bot.sendMessage(msg.chat.id, 'Commands, events, and cronjobs reloaded successfully.');
-      console.log('Commands, events, and cronjobs reloaded');
-    } catch (reloadError) {
-      try {
-        await bot.sendMessage(msg.chat.id, 'Error reloading commands, events, or cronjobs.');
-      } catch (sendError) {
-        console.error('Error sending reload error message:', sendError);
-      }
-      console.error('Reload error:', reloadError);
-    }
-  });
 }
 
-module.exports = { setupReloadHandler };
+module.exports = { setuploadHandler };

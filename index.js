@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const config = require('./config.json');
 const { setupMessageHandler } = require('./handlers/message');
 const { setupEditHandler } = require('./handlers/edit');
-const { setupReloadHandler } = require('./handlers/reload');
+const { setuploadHandler } = require('./handlers/load');
 
 global.commands = new Map();
 global.replyCallbacks = new Map();
@@ -22,7 +22,7 @@ bot.on('polling_error', (error) => {
 
 async function startBot() {
   try {
-    await setupReloadHandler(bot);
+    await setuploadHandler(bot);
     setupMessageHandler(bot);
     setupEditHandler(bot);
     console.log('Bot is running...');
