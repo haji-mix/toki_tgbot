@@ -19,6 +19,7 @@ module.exports = {
       global.replyCallbacks.set(sentMessage.message_id, async (replyMsg) => {
         if (replyMsg.text) {
            response = await gpt4o(replyMsg.text, userId);
+           global.replyCallbacks.set(sentMessage.message_id);
            chat.reply(response);
         }
       });
