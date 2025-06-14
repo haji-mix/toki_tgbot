@@ -89,7 +89,9 @@ module.exports = {
         {
           attachment: mediaGroup,
           body: caption,
-          reply_markup: inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined,
+          reply_markup: {
+          inline_keyboard: inlineKeyboard,
+        },
         },
         this.chatId
       );
